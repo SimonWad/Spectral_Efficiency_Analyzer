@@ -5,6 +5,8 @@ import warnings
 import pickle
 from definitions import *
 from method_lib.sourceTemplateFuncs import *
+from scipy.interpolate import interp1d
+from method_lib.FileTypeHandler import *
 
 
 def detectCompatible(fileName):
@@ -26,8 +28,7 @@ def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
         case ".csv":
             df = pd.read_csv(fileName)
         case ".xlsx":
-            df = pd.read_excel(fileName)
-            df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+            df = load_excel_autoheader(fileName)
         case ".txt":
             if txtDelim is None:
                 txtDelim = input('Please indicate delimiter: ')
@@ -39,6 +40,14 @@ def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
     if df.isnull().values.any() > 0:
         warnings.warn("Beware, the dataframe contains missing values")
     return df
+
+
+def detect_data_start(df, numeric_threshold=0.8):
+    for i, row in df.iterrows():
+        numeric_fraction = np.mean(pd.to_numeric(row, errors="coerce").notna())
+        if numeric_fraction >= numeric_threshold:
+            return i
+    return 0
 
 
 def storeEfficiencyData(dataObj: object, cachePath: str = "dataCache/"):
@@ -61,45 +70,153 @@ def loadStoredObject(fileName: str):
     return data
 
 
-class efficiencyData:
+class OpticalComponentData:
     """
-    A class for storing effieciency data:
+    A class for defining optical components present in a system, this calss is a universal data configuration.
 
-    dataFileName: str
-    The path to the datafile relative to the library directory
+    init:
+    There is asked for several information pieces.
+        - typeID, which is the ID for the optical element or source. This can be whatever, 'filter' for optical filters, 'coating' for surface coating on lenses, 'black body' if the component is a source.
 
-    type: str
-    A string defining what the type of effieciency data is. 
-    eg. Filter, surface coating, prism, lens, ...
+        - StorageID, the name of the component. Here you are also spoiled with choice. This parameter defines the storage name so be descriptive.
 
-    name: str
-    The name of the effiecency data. recommended is to use the product name or product number for easy reference.
+        - isSource, a boolean that defines if the type is a source or not.
+
     """
 
-    def __init__(self, dataFileName: str, type: str, name: str) -> pd.DataFrame:
-        self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))
-        self.type = type
-        self.name = name
+    def __init__(self, typeID: str = "unknown", storageID: str = "unknown", isSource: bool = False) -> pd.DataFrame:
+        self.typeID = typeID
+        self.storageID = storageID
+        self.df = pd.DataFrame()
+        self.isSource = isSource
+
+    def generateSourceData_BB(self, sourceSpectrum, sourceTemperature, unitsSI=False, showNPHOTONS=False):
+        if self.isSource is True:
+            self.df = pd.DataFrame()
+            self.df['Wavelength (µm)'] = sourceSpectrum
+            self.df[self.storageID], self.units = nplanck_micron(
+                sourceSpectrum, sourceTemperature, SI=unitsSI, NPHOTONS=showNPHOTONS)
+        if not self.isSource:
+            raise TypeError(
+                "Object is not defined as a source. Please set isSource = True")
+
+    def addUserDefinedData(
+        self,
+        spectrum_data: np.ndarray | pd.DataFrame,
+        efficiency_data: np.ndarray | pd.DataFrame,
+        spectrum_col_label: str = "wavelength",
+        efficiency_col_label: str = "efficiency data"
+    ):
+        # Convert numpy arrays to DataFrames if necessary
+        if isinstance(spectrum_data, np.ndarray):
+            spectrum_data = pd.DataFrame(spectrum_data, columns=[
+                                         spectrum_col_label])
+        if isinstance(efficiency_data, np.ndarray):
+            efficiency_data = pd.DataFrame(efficiency_data, columns=[
+                                           efficiency_col_label])
+
+        self.df[spectrum_col_label] = spectrum_data
+        self.df[efficiency_col_label] = efficiency_data
         self.header = self.getHeader()
+
+    def readDataFromFile(self, dataFileName: str):
+        self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))
+        self.header = self.getHeader()
+        print(self.df.head())
 
     def getHeader(self):
         return list(self.df.columns.values)
 
+    def remap(self, newWavelengths: np.ndarray | pd.DataFrame, method: str = "linear", inplace=False):
 
-class sourceData:
+        header = self.getHeader()  # update in case of data changes
+        dataWavelengths = self.df[header[0]]
 
-    """
-    A class for storing and generatng source Data:
+        # Normalize the both spectrums
+        unit_data = self.detect_wavelength_unit(dataWavelengths)
+        print(unit_data)
+        unit_lambda_ = self.detect_wavelength_unit(newWavelengths)
+        print(unit_lambda_)
 
-    sourceID: str
-    The name for your source. It can be anything really. Saved datafiles will be named with this ID so be descriptive.
-    """
+        if unit_data != unit_lambda_:
+            newWavelengths = self.convert_unit(
+                newWavelengths, unit_lambda_, unit_data)
+        print(self.detect_wavelength_unit(newWavelengths))
 
-    def __init__(self, sourceID: str):
-        self.sourceID = sourceID
+        # Detect which columns exist
+        has_OD = len(header) > 2
+        dataValues = self.df[header[1]]
+        dataOD = self.df[header[2]] if has_OD else None
 
-    def generateSourceData_BB(self, sourceSpectrum, sourceTemperature, unitsSI=False, showNPHOTONS=False):
-        self.df = pd.DataFrame()
-        self.df['Wavelength (µm)'] = sourceSpectrum
-        self.df[self.sourceID], self.units = nplanck_micron(
-            sourceSpectrum, sourceTemperature, SI=unitsSI, NPHOTONS=showNPHOTONS)
+        print(
+            f"Interpolating: {dataWavelengths.name} → {header[1]}{' + ' + header[2] if has_OD else ''}")
+
+        # Validate wavelength data
+        if np.any(np.isnan(dataWavelengths)):
+            raise ValueError("NaN values found in wavelength column.")
+        if np.any(np.diff(dataWavelengths) <= 0):
+            raise ValueError(
+                "Wavelengths must be strictly increasing for interpolation.")
+
+        # Interpolate
+        f = interp1d(dataWavelengths, dataValues,
+                     kind=method, fill_value="extrapolate")
+        newValues = f(newWavelengths)
+
+        if has_OD:
+            g = interp1d(dataWavelengths, dataOD, kind=method,
+                         fill_value="extrapolate")
+            newOD = g(newWavelengths)
+
+        # Build new DataFrame safely
+        new_df_data = {
+            header[0]: newWavelengths,
+            header[1]: newValues
+        }
+        if has_OD:
+            new_df_data[header[2]] = newOD
+
+        new_df = pd.DataFrame(new_df_data)
+
+        # Handle in-place vs return
+        if inplace:
+            self.df = new_df.reset_index(drop=True)
+            return self
+        else:
+            return new_df
+
+    def normalize_wavelengths(self, wavelengths, unit=None, default_unit="nm", autodetect=True):
+        if unit is None:
+            if autodetect:
+                unit = self.detect_wavelength_unit(wavelengths)
+            else:
+                unit = default_unit
+        return self.convert_unit(wavelengths, unit)
+
+    def detect_wavelength_unit(self, wavelengths):
+        mean_val = np.mean(wavelengths)
+        if mean_val > 1e5:
+            return "angstrom"
+        elif mean_val > 100:
+            return "nm"
+        elif mean_val < 10:
+            return "um"
+        else:
+            return "m"  # rare case
+
+    def convert_unit(self, values, from_unit, to_unit="um"):
+        """
+        Convert wavelength array between arbitrary units.
+        """
+
+        from_unit = from_unit.lower()
+        to_unit = to_unit.lower()
+
+        if from_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported input unit: {from_unit}")
+        if to_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported output unit: {to_unit}")
+
+        # Convert everything through meters
+        values_in_m = values * UNIT_TO_METERS[from_unit]
+        return values_in_m / UNIT_TO_METERS[to_unit]

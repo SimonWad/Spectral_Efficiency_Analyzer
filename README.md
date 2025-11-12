@@ -6,12 +6,6 @@ Each provided data file is stored as an object and serialized in a local cache. 
 
 ## Requirements
 
-The required packages are:
-
-- pandas
-- matplotlib
-- numpy
-
 All requirements are found in the `requirements.txt`
 
 ```bash

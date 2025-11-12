@@ -5,3 +5,5 @@ __pycache__/
 dataCache/*
 TODO.md
 *.csv
+tempCodeRunnerFile.py
+.vscode

@@ -71,7 +71,7 @@ def nplanck_micron(lambda_micron, temp, SI=False, NPHOTONS=False):
             units = "W/m^2/µm"
         else:
             bbflux = 1e-8 * bbflux            # erg/cm^2/s/µm
-            units = erg/cm ^ 2/s/µm
+            units = "erg/cm ^ 2/s/µm"
 
     bbflux[bbflux < 1e-24] = 0.0
 
