@@ -1,24 +1,13 @@
 import pandas as pd
 import numpy as np
 import os
+import re
 import warnings
 import pickle
 from definitions import *
 from method_lib.sourceTemplateFuncs import *
 from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
-
-
-def detectCompatible(fileName):
-    supportedFileTypes = [".csv", ".xlsx", ".txt", ".json"]
-    _, ext = os.path.splitext(fileName)
-    ext = ext.lower()
-
-    if ext not in supportedFileTypes:
-        raise ValueError(
-            f"Unsupported file type: '{ext}'. Supported types are: {', '.join(supportedFileTypes)}")
-
-    return True, ext
 
 
 def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
@@ -84,13 +73,26 @@ class OpticalComponentData:
 
     """
 
-    def __init__(self, typeID: str = "unknown", storageID: str = "unknown", isSource: bool = False) -> pd.DataFrame:
+    def __init__(
+            self,
+            typeID: str = "unknown",
+            storageID: str = "unknown",
+            isSource: bool = False
+    ) -> pd.DataFrame:
+
         self.typeID = typeID
         self.storageID = storageID
         self.df = pd.DataFrame()
         self.isSource = isSource
 
-    def generateSourceData_BB(self, sourceSpectrum, sourceTemperature, unitsSI=False, showNPHOTONS=False):
+    def generateSourceData_BB(
+            self,
+            sourceSpectrum,
+            sourceTemperature,
+            unitsSI=False,
+            showNPHOTONS=False
+    ):
+
         if self.isSource is True:
             self.df = pd.DataFrame()
             self.df['Wavelength (µm)'] = sourceSpectrum
@@ -101,11 +103,11 @@ class OpticalComponentData:
                 "Object is not defined as a source. Please set isSource = True")
 
     def addUserDefinedData(
-        self,
-        spectrum_data: np.ndarray | pd.DataFrame,
-        efficiency_data: np.ndarray | pd.DataFrame,
-        spectrum_col_label: str = "wavelength",
-        efficiency_col_label: str = "efficiency data"
+            self,
+            spectrum_data: np.ndarray | pd.DataFrame,
+            efficiency_data: np.ndarray | pd.DataFrame,
+            spectrum_col_label: str = "wavelength",
+            efficiency_col_label: str = "efficiency data"
     ):
         # Convert numpy arrays to DataFrames if necessary
         if isinstance(spectrum_data, np.ndarray):
@@ -119,29 +121,56 @@ class OpticalComponentData:
         self.df[efficiency_col_label] = efficiency_data
         self.header = self.getHeader()
 
-    def readDataFromFile(self, dataFileName: str):
+    def readDataFromFile(
+            self,
+            dataFileName: str
+    ):
+
         self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))
+        self.standardize_header()
         self.header = self.getHeader()
         print(self.df.head())
 
-    def getHeader(self):
+    def getHeader(
+            self
+    ):
         return list(self.df.columns.values)
 
-    def remap(self, newWavelengths: np.ndarray | pd.DataFrame, method: str = "linear", inplace=False):
+    def remap(
+            self,
+            newWavelengths: np.ndarray | pd.DataFrame,
+            method: str = "linear",
+            inplace=False,
+            outputUnits: bool = False
+    ):
 
         header = self.getHeader()  # update in case of data changes
         dataWavelengths = self.df[header[0]]
 
         # Normalize the both spectrums
         unit_data = self.detect_wavelength_unit(dataWavelengths)
-        print(unit_data)
         unit_lambda_ = self.detect_wavelength_unit(newWavelengths)
-        print(unit_lambda_)
 
         if unit_data != unit_lambda_:
-            newWavelengths = self.convert_unit(
-                newWavelengths, unit_lambda_, unit_data)
-        print(self.detect_wavelength_unit(newWavelengths))
+            dataWavelengths = self.convert_unit(
+                dataWavelengths, unit_data, unit_lambda_)
+        if outputUnits:
+            print("Starting unit for the spectrum data: \n", unit_data, "\n")
+            print("Unit of the new spectrum: \n", unit_lambda_, "\n")
+            print("Spectrum unit after normalization: \n",
+                  self.detect_wavelength_unit(newWavelengths), "\n")
+
+        tol_factor = 1e-3  # relative tolerance: 0.1% of lower bound
+        unit_step = tol_factor * dataWavelengths.min()  # scales with wavelength
+
+        lower_diff = abs(newWavelengths.min() - dataWavelengths.min())
+
+        if lower_diff > unit_step:
+            warnings.warn(
+                f"\nLower input boundary {newWavelengths.min():.4f} differs from data boundary "
+                f"{dataWavelengths.min():.4f} by {lower_diff:.4g} (> tolerance {unit_step:.4g}). "
+                f"Possible extrapolation or regression errors.\n"
+            )
 
         # Detect which columns exist
         has_OD = len(header) > 2
@@ -185,7 +214,13 @@ class OpticalComponentData:
         else:
             return new_df
 
-    def normalize_wavelengths(self, wavelengths, unit=None, default_unit="nm", autodetect=True):
+    def normalize_wavelengths(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray,
+            unit: bool = None,
+            default_unit: str = "nm",
+            autodetect: bool = True
+    ):
         if unit is None:
             if autodetect:
                 unit = self.detect_wavelength_unit(wavelengths)
@@ -193,7 +228,11 @@ class OpticalComponentData:
                 unit = default_unit
         return self.convert_unit(wavelengths, unit)
 
-    def detect_wavelength_unit(self, wavelengths):
+    def detect_wavelength_unit(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray
+    ):
+
         mean_val = np.mean(wavelengths)
         if mean_val > 1e5:
             return "angstrom"
@@ -204,7 +243,12 @@ class OpticalComponentData:
         else:
             return "m"  # rare case
 
-    def convert_unit(self, values, from_unit, to_unit="um"):
+    def convert_unit(
+            self,
+            values: pd.DataFrame | np.ndarray,
+            from_unit: str,
+            to_unit: str = "um"
+    ):
         """
         Convert wavelength array between arbitrary units.
         """
@@ -220,3 +264,37 @@ class OpticalComponentData:
         # Convert everything through meters
         values_in_m = values * UNIT_TO_METERS[from_unit]
         return values_in_m / UNIT_TO_METERS[to_unit]
+
+    def standardize_header(
+            self
+    ):
+        """
+        Standardizes dataframe headers for optical data and sets capability flags.
+        """
+        if self.df.empty:
+            raise ValueError(
+                "DataFrame is empty. Load data before standardizing headers.")
+
+        rename_map = {}
+        lowered = [col.lower().strip() for col in self.df.columns]
+
+        # Initialize detection flags
+        for key in ALIAS_MAP.keys():
+            setattr(self, f"has_{key}", False)
+
+        # Try to match each column
+        for original, col_lower in zip(self.df.columns, lowered):
+            for std_name, patterns in ALIAS_MAP.items():
+                if any(re.search(p, col_lower) for p in patterns):
+                    rename_map[original] = std_name
+                    setattr(self, f"has_{std_name}", True)
+                    break  # stop after first match to avoid overwriting
+
+        # Apply renaming safely
+        if rename_map:
+            self.df.rename(columns=rename_map, inplace=True)
+            self.header = list(self.df.columns)
+        else:
+            print("Warning: No known optical headers detected.")
+
+        return rename_map
