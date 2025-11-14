@@ -49,7 +49,7 @@ def load_excel_autoheader(path, max_scan_rows=10, min_nonempty_per_col=2):
     clean_df = clean_df.loc[:, ~clean_df.columns.str.contains('^Unnamed')]
 
     # 7. Attempt numeric conversion where possible
-    clean_df = clean_df.apply(pd.to_numeric, errors='ignore')
+    clean_df = clean_df.apply(pd.to_numeric)
 
     return clean_df
 

@@ -298,3 +298,28 @@ class OpticalComponentData:
             print("Warning: No known optical headers detected.")
 
         return rename_map
+    
+class TelescopeModelData:
+    def __init__(
+            self,
+            modelID: str = "unknown"
+    ):
+        self.modelID = modelID
+        self.df = pd.DataFrame()
+
+    def readDataFromFile_PROTOTYPE(self, dataFileName: str):
+        # --- Load new file ---
+        temp_obj = OpticalComponentData()
+        temp_obj.df = readDataFile(dataFileName)
+        temp_obj.standardize_header()
+        self.df = temp_obj.df
+        self.df.set_index("wavelength").sort_index()
+        temp_obj.df = readDataFile("test_data/E4_Broadband_AR_Coating.xlsx")
+        temp_obj.standardize_header()
+        temp_obj.df.set_index("wavelength").sort_index
+        print(temp_obj.df.index)
+        temp_obj.df.reindex(self.df.index).interpolate(method='linear')
+        print(temp_obj.df.index)
+        self.df = self.df.join(temp_obj.df, how='outer', lsuffix="_AR", rsuffix="_E4")
+        
+        print(self.df.head())
