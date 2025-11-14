@@ -178,7 +178,7 @@ class OpticalComponentData:
         dataOD = self.df[header[2]] if has_OD else None
 
         print(
-            f"Interpolating: {dataWavelengths.name} → {header[1]}{' + ' + header[2] if has_OD else ''}")
+            f"Interpolating: {dataWavelengths.name} -> {header[1]}{' + ' + header[2] if has_OD else ''}")
 
         # Validate wavelength data
         if np.any(np.isnan(dataWavelengths)):
