@@ -123,7 +123,8 @@ class OpticalComponentData:
 
     def readDataFromFile(
             self,
-            dataFileName: str
+            dataFileName: str,
+
     ):
 
         self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))

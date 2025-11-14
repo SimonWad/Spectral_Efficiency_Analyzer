@@ -2,7 +2,6 @@ from method_lib import dataImporter as di
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy as spi
 
 lambda_ = np.arange(0.2, 13, 0.001)
 
