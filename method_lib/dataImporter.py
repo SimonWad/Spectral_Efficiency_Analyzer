@@ -8,7 +8,7 @@ from definitions import *
 from method_lib.sourceTemplateFuncs import *
 from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
-
+from method_lib.PrototypeFunctions import *
 
 def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
     _, fileType = detectCompatible(fileName)
@@ -123,14 +123,13 @@ class OpticalComponentData:
 
     def readDataFromFile(
             self,
-            dataFileName: str,
-
+            dataFileName: str
     ):
-
         self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))
         self.standardize_header()
         self.header = self.getHeader()
         print(self.df.head())
+
 
     def getHeader(
             self
