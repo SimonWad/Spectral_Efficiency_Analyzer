@@ -10,6 +10,7 @@ from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
 from method_lib.PrototypeFunctions import *
 
+
 def readDataFile(
         fileName,
         txtDelim=None
@@ -144,7 +145,6 @@ class OpticalComponentData:
         self.standardize_header()
         self.header = self.getHeader()
         print(self.df.head())
-
 
     def getHeader(
             self
@@ -327,6 +327,119 @@ class TelescopeModel:
             self,
             filePath: str,
             componentID: str,
-            suffix: str = "_"
+            suffix: str = None
     ):
-        return 0  # WIP
+        if self.df.empty:
+            # First component: establish the wavelength index
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+            self.index = self.df.index
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            print(self.df.head())
+
+        else:
+            # Read new component
+            self.temp_df = self.df.copy()
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+
+            # Reindex to the established wavelength grid
+            self.df.reindex(self.index).interpolate()
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            # Append columns to the main df
+            self.df = pd.concat([self.temp_df, self.df], axis=1)
+            self.temp_df = None
+            print(self.df.head())
+
+    def normalize_wavelengths(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray,
+            unit: bool = None,
+            default_unit: str = "nm",
+            autodetect: bool = True
+    ):
+        if unit is None:
+            if autodetect:
+                unit = self.detect_wavelength_unit(wavelengths)
+            else:
+                unit = default_unit
+        return self.convert_unit(wavelengths, unit)
+
+    def detect_wavelength_unit(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray
+    ):
+
+        mean_val = np.mean(wavelengths)
+        if mean_val > 1e5:
+            return "angstrom"
+        elif mean_val > 100:
+            return "nm"
+        elif mean_val < 10:
+            return "um"
+        else:
+            return "m"  # rare case
+
+    def convert_unit(
+            self,
+            values: pd.DataFrame | np.ndarray,
+            from_unit: str,
+            to_unit: str = "um"
+    ):
+        """
+        Convert wavelength array between arbitrary units.
+        """
+
+        from_unit = from_unit.lower()
+        to_unit = to_unit.lower()
+
+        if from_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported input unit: {from_unit}")
+        if to_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported output unit: {to_unit}")
+
+        # Convert everything through meters
+        values_in_m = values * UNIT_TO_METERS[from_unit]
+        return values_in_m / UNIT_TO_METERS[to_unit]
+
+    def standardize_header(
+            self
+    ):
+        """
+        Standardizes dataframe headers for optical data and sets capability flags.
+        """
+        if self.df.empty:
+            raise ValueError(
+                "DataFrame is empty. Load data before standardizing headers.")
+
+        rename_map = {}
+        lowered = [col.lower().strip() for col in self.df.columns]
+
+        # Initialize detection flags
+        for key in ALIAS_MAP.keys():
+            setattr(self, f"has_{key}", False)
+
+        # Try to match each column
+        for original, col_lower in zip(self.df.columns, lowered):
+            for std_name, patterns in ALIAS_MAP.items():
+                if any(re.search(p, col_lower) for p in patterns):
+                    rename_map[original] = std_name
+                    setattr(self, f"has_{std_name}", True)
+                    break  # stop after first match to avoid overwriting
+
+        # Apply renaming safely
+        if rename_map:
+            self.df.rename(columns=rename_map, inplace=True)
+            self.header = list(self.df.columns)
+        else:
+            print("Warning: No known optical headers detected.")
+
+        return rename_map
