@@ -2,7 +2,6 @@ from method_lib import dataImporter as di
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy as spi
 
 lambda_ = np.arange(0.2, 13, 0.001)
 
@@ -23,8 +22,8 @@ fig, (ax1, ax2) = plt.subplots(2, 1)
 ax1.plot(lambda_, sourceBB.df[sourceBB.storageID], 'k')
 ax1.set_ylabel(f"$[{sourceBB.units}]$")
 
-ax2.plot(lambda_, filter_df['% Transmission'], 'k')
-ax2.set_ylabel('Transmission %')
+ax2.plot(lambda_, filter_df['transmission'], 'k')
+ax2.set_ylabel('transmission [%]')
 ax2.set_xlabel('Wavelengt [µm]')
 plt.show()
 
@@ -32,7 +31,7 @@ resultingData = pd.DataFrame()
 resultingData[f"Wavelength ({sourceBB.detect_wavelength_unit(lambda_)})"] = lambda_
 
 resultingData["Effeciency"] = sourceBB.df[sourceBB.storageID] * \
-    (filter_df['% Transmission'] / 100)
+    (filter_df['transmission'] / 100)
 
 
 plt.plot(lambda_, resultingData["Effeciency"], 'k')

@@ -8,7 +8,7 @@ from definitions import *
 from method_lib.sourceTemplateFuncs import *
 from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
-
+from method_lib.PrototypeFunctions import *
 
 def readDataFile(
         fileName,
@@ -140,11 +140,11 @@ class OpticalComponentData:
             self,
             dataFileName: str
     ):
-
         self.df = readDataFile(os.path.join(ROOT_DIR, dataFileName))
         self.standardize_header()
         self.header = self.getHeader()
         print(self.df.head())
+
 
     def getHeader(
             self
@@ -193,7 +193,7 @@ class OpticalComponentData:
         dataOD = self.df[header[2]] if has_OD else None
 
         print(
-            f"Interpolating: {dataWavelengths.name} → {header[1]}{' + ' + header[2] if has_OD else ''}")
+            f"Interpolating: {dataWavelengths.name} -> {header[1]}{' + ' + header[2] if has_OD else ''}")
 
         # Validate wavelength data
         if np.any(np.isnan(dataWavelengths)):
