@@ -10,7 +10,10 @@ from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
 
 
-def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
+def readDataFile(
+        fileName,
+        txtDelim=None
+) -> pd.DataFrame:
     _, fileType = detectCompatible(fileName)
 
     match fileType:
@@ -31,7 +34,10 @@ def readDataFile(fileName, txtDelim=None) -> pd.DataFrame:
     return df
 
 
-def detect_data_start(df, numeric_threshold=0.8):
+def detect_data_start(
+        df,
+        numeric_threshold=0.8
+):
     for i, row in df.iterrows():
         numeric_fraction = np.mean(pd.to_numeric(row, errors="coerce").notna())
         if numeric_fraction >= numeric_threshold:
@@ -39,12 +45,19 @@ def detect_data_start(df, numeric_threshold=0.8):
     return 0
 
 
-def storeEfficiencyData(dataObj: object, cachePath: str = "dataCache/"):
+def storeEfficiencyData(
+        dataObj: object,
+        cachePath: str = "dataCache/"
+):
     with open(cachePath + dataObj.name + '_EFFICIENCY_DATA.pickle', 'wb') as f:
         pickle.dump(dataObj, f, pickle.HIGHEST_PROTOCOL)
 
 
-def storeSourceData(dataObj: object, cachePath: str = "dataCache/", generateDataFile: bool = False):
+def storeSourceData(
+        dataObj: object,
+        cachePath: str = "dataCache/",
+        generateDataFile: bool = False
+):
     with open(cachePath + dataObj.sourceID + '_SOURCE.pickle', 'wb') as f:
         pickle.dump(dataObj, f, pickle.HIGHEST_PROTOCOL)
     if generateDataFile is True:
@@ -53,7 +66,9 @@ def storeSourceData(dataObj: object, cachePath: str = "dataCache/", generateData
             dataObj.df.to_csv(file)
 
 
-def loadStoredObject(fileName: str):
+def loadStoredObject(
+        fileName: str
+):
     with open(fileName, "rb") as f:
         data = pickle.load(f)
     return data
@@ -298,3 +313,20 @@ class OpticalComponentData:
             print("Warning: No known optical headers detected.")
 
         return rename_map
+
+
+class TelescopeModel:
+    def __init__(
+            self,
+            ID: str = "default_telescope"
+    ):
+        self.ID = ID
+        self.df = pd.DataFrame
+
+    def addComponent(
+            self,
+            filePath: str,
+            componentID: str,
+            suffix: str = "_"
+    ):
+        return 0  # WIP
