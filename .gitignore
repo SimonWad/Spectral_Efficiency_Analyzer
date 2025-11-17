@@ -1,6 +1,7 @@
 __pycache__/
 .env/
 *_test.py
+!script_test.py
 *.pickle
 dataCache/*
 TODO.md
