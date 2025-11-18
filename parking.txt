@@ -1,0 +1,237 @@
+
+class TelescopeModel_BROKEN:
+    def __init__(
+            self,
+            ID: str = "default_telescope"
+    ):
+        self.ID = ID
+        self.df = pd.DataFrame()
+        self.metadata = {
+            "components": [],
+            "units": {},  # standardized column -> unit (e.g. '%' or 'nm')
+            "wavelength_axis": None,
+            "spectral_bounds": None,
+            "spectral_unit": None,
+        }
+
+    def _load_component(
+            self,
+            path: str
+    ) -> pd.DataFrame:
+        df = readDataFile(path)
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("Reader must return a pandas DataFrame.")
+        return df.copy()
+
+    def parse_header_list(self, headers: list[str]):
+        """
+        Processes a list of column headers.
+        Returns:
+            cleaned_headers : list[str]
+            detected_units  : dict[str, str or None]
+        """
+        cleaned_headers = []
+        detected_units = {}
+
+        for h in headers:
+            clean, unit = self._detect_unit_in_header(h)
+            cleaned_headers.append(clean)
+            detected_units[clean] = unit
+
+        return cleaned_headers, detected_units
+
+    def _detect_unit_in_header(self, header: str):
+        raw = header.strip()
+        lower = raw.lower()
+        detected_unit = None
+        cleaned = raw
+
+        # 1. Detect unit from definitions.py → UNIT_KEYWORDS
+        for pattern, unit in UNIT_KEYWORDS:
+            if re.search(pattern, lower):
+                detected_unit = UNIT_NORMALIZATION.get(unit, unit)
+                cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+                break
+
+        # 2. Strip tokens
+        for tok in HEADER_STRIP_TOKENS:
+            cleaned = cleaned.replace(tok, "")
+
+        cleaned = cleaned.strip().strip("-").strip("_").lower()
+
+        return cleaned, detected_unit
+
+    def _initialize_axis_and_store(self, df_indexed):
+        axis = pd.Index(df_indexed.index.astype(float), name="wavelength")
+        self.metadata["wavelength_axis"] = axis
+        self.metadata["spectral_unit"] = self.metadata["units"].get(
+            "wavelength") or self.detect_wavelength_unit(axis)
+        self.metadata["spectral_bounds"] = (
+            float(axis.min()), float(axis.max()))
+
+    def addComponent(
+            self,
+            filePath: str,
+            componentID: str,
+            suffix: str = None
+    ):
+        if self.df.empty:
+            # First component: establish the wavelength index
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+            self.index = self.df.index
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            self._initialize_axis_and_store(self.df)
+            self._update_metadata()
+        else:
+            # Read new component
+            self.temp_df = self.df.copy()
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+
+            # Reindex to the established wavelength grid
+            self.df = self.df.reindex(self.index).interpolate()
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            # Append columns to the main df
+            self.df = pd.concat([self.temp_df, self.df], axis=1)
+            self.temp_df = None
+            self._update_metadata()
+
+    def _update_metadata(self):
+        axis = self.metadata.get("wavelength_axis")
+        if axis is None:
+            if self.df.empty:
+                return
+            axis = self.df.index
+        axis = pd.Index(axis.astype(float), name="wavelength")
+        self.metadata["wavelength_axis"] = axis
+        self.metadata["spectral_bounds"] = (
+            float(axis.min()), float(axis.max()))
+        self.metadata["spectral_unit"] = self.detect_wavelength_unit(
+            axis)
+
+    def normalize_wavelengths(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray,
+            unit: bool = None,
+            default_unit: str = "nm",
+            autodetect: bool = True
+    ):
+        if unit is None:
+            if autodetect:
+                unit = self.detect_wavelength_unit(wavelengths)
+            else:
+                unit = default_unit
+        return self.convert_unit(wavelengths, unit)
+
+    def detect_wavelength_unit(
+            self,
+            wavelengths: pd.DataFrame | np.ndarray
+    ):
+
+        mean_val = np.mean(wavelengths)
+        if mean_val > 1e5:
+            return "angstrom"
+        elif mean_val > 100:
+            return "nm"
+        elif mean_val < 10:
+            return "um"
+        else:
+            return "m"  # rare case
+
+    def convert_unit(
+            self,
+            values: pd.DataFrame | np.ndarray,
+            from_unit: str,
+            to_unit: str = "um"
+    ):
+        """
+        Convert wavelength array between arbitrary units.
+        """
+
+        from_unit = from_unit.lower()
+        to_unit = to_unit.lower()
+
+        if from_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported input unit: {from_unit}")
+        if to_unit not in UNIT_TO_METERS:
+            raise ValueError(f"Unsupported output unit: {to_unit}")
+
+        # Convert everything through meters
+        values_in_m = values * UNIT_TO_METERS[from_unit]
+        return values_in_m / UNIT_TO_METERS[to_unit]
+
+    def standardize_header(self):
+        if self.df.empty:
+            raise ValueError(
+                "Cannot standardize headers of an empty DataFrame.")
+
+        headers = list(self.df.columns)
+
+        # Step 1: parse header list
+        cleaned_headers, detected_units = self.parse_header_list(headers)
+        # Step 2: rename columns in dataframe
+        rename_map = {old: new for old, new in zip(headers, cleaned_headers)}
+
+        self.df.rename(columns=rename_map, inplace=True)
+
+        # Step 3: update class metadata
+        self.header_units = detected_units
+        self.header = cleaned_headers
+        self.metadata["units"] = detected_units
+
+        # Step 4: alias mapping (using ALIAS_MAP)
+        for key, patterns in ALIAS_MAP.items():
+            setattr(self, f"has_{key}", False)
+
+        for h in cleaned_headers:
+            for std_name, patterns in ALIAS_MAP.items():
+                if any(re.search(p, h) for p in patterns):
+                    setattr(self, f"has_{std_name}", True)
+
+        return rename_map
+
+
+def addComponent(
+    self,
+    filePath: str,
+    componentID: str,
+    suffix: str = None
+):
+       if self.df.empty:
+            # First component: establish the wavelength index
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+            self.index = self.df.index
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            self._initialize_axis_and_store(self.df)
+            self._update_metadata()
+        else:
+            # Read new component
+            self.temp_df = self.df.copy()
+            self.df = readDataFile(filePath)
+            self.standardize_header()
+            self.df.set_index("wavelength", inplace=True)
+
+            # Reindex to the established wavelength grid
+            self.df = self.df.reindex(self.index).interpolate()
+            if suffix is None:
+                self.df = self.df.add_suffix("_" + componentID, axis=1)
+            else:
+                self.df = self.df.add_suffix(suffix, axis=1)
+            # Append columns to the main df
+            self.df = pd.concat([self.temp_df, self.df], axis=1)
+            self.temp_df = None
+            self._update_metadata()

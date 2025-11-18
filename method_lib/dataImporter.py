@@ -8,7 +8,8 @@ from definitions import *
 from method_lib.sourceTemplateFuncs import *
 from scipy.interpolate import interp1d
 from method_lib.FileTypeHandler import *
-from method_lib.PrototypeFunctions import *
+# from method_lib.PrototypeFunctions import *
+from typing import Optional, Callable, Dict, Iterable, Tuple, Union
 
 
 def readDataFile(
@@ -321,7 +322,21 @@ class TelescopeModel:
             ID: str = "default_telescope"
     ):
         self.ID = ID
-        self.df = pd.DataFrame
+        self.df = pd.DataFrame()
+        self.__temp_df = pd.DataFrame()
+        self.metadata = {
+            "Telescope ID": self.ID,
+            "components": [],
+            "units": {},  # standardized column -> unit (e.g. '%' or 'nm')
+            "wavelength_axis": None,
+            "spectral_bounds": None,
+            "spectral_unit": None,
+        }
+
+    '''
+    Main methods:
+        Component adding
+    '''
 
     def addComponent(
             self,
@@ -329,35 +344,132 @@ class TelescopeModel:
             componentID: str,
             suffix: str = None
     ):
+        # Make sure that the method returns a DataFrame
+        self.__temp_df = self._load_component(filePath)
+        self.standardize_header(self.__temp_df)
+        self.__temp_df.set_index("wavelength", inplace=True)
+
+        if suffix is None:
+            self.__temp_df = self.__temp_df.add_suffix(
+                "_" + componentID, axis=1)
+        else:
+            self.__temp_df = self.__temp_df.add_suffix(suffix, axis=1)
+
         if self.df.empty:
-            # First component: establish the wavelength index
-            self.df = readDataFile(filePath)
-            self.standardize_header()
-            self.df.set_index("wavelength", inplace=True)
-            self.index = self.df.index
-            if suffix is None:
-                self.df = self.df.add_suffix("_" + componentID, axis=1)
-            else:
-                self.df = self.df.add_suffix(suffix, axis=1)
-            print(self.df.head())
+            self.df = self.__temp_df.copy()
+            self._update_metadata()
 
         else:
-            # Read new component
-            self.temp_df = self.df.copy()
-            self.df = readDataFile(filePath)
-            self.standardize_header()
-            self.df.set_index("wavelength", inplace=True)
+            self.__temp_df = self.__temp_df.reindex(
+                self.metadata["wavelength_axis"]).interpolate()
+            self.df = pd.concat([self.df, self.__temp_df], axis=1)
+            self._update_metadata()
 
-            # Reindex to the established wavelength grid
-            self.df.reindex(self.index).interpolate()
-            if suffix is None:
-                self.df = self.df.add_suffix("_" + componentID, axis=1)
-            else:
-                self.df = self.df.add_suffix(suffix, axis=1)
-            # Append columns to the main df
-            self.df = pd.concat([self.temp_df, self.df], axis=1)
-            self.temp_df = None
-            print(self.df.head())
+    '''
+    Testing methods
+    '''
+
+    def _load_component(
+            self,
+            path: str
+    ) -> pd.DataFrame:
+        df = readDataFile(path)
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError("Reader must return a pandas DataFrame.")
+        return df.copy()
+
+    '''
+    Methods for header processing 
+    '''
+
+    def _detect_unit_in_header(self, header: str):
+        raw = header.strip()
+        lower = raw.lower()
+        detected_unit = None
+        cleaned = raw
+
+        # 1. Detect unit from definitions.py → UNIT_KEYWORDS
+        for pattern, unit in UNIT_KEYWORDS:
+            if re.search(pattern, lower):
+                detected_unit = UNIT_NORMALIZATION.get(unit, unit)
+                cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+                break
+
+        # 2. Strip tokens
+        for tok in HEADER_STRIP_TOKENS:
+            cleaned = cleaned.replace(tok, "")
+
+        cleaned = cleaned.strip().strip("-").strip("_").lower()
+
+        return cleaned, detected_unit
+
+    def parse_header_list(self, headers: list[str]):
+        """
+        Processes a list of column headers.
+        Returns:
+            cleaned_headers : list[str]
+            detected_units  : dict[str, str or None]
+        """
+        cleaned_headers = []
+        detected_units = {}
+
+        for h in headers:
+            clean, unit = self._detect_unit_in_header(h)
+            cleaned_headers.append(clean)
+            detected_units[clean] = unit
+
+        return cleaned_headers, detected_units
+
+    def standardize_header(self, input_df):
+        if input_df.empty:
+            raise ValueError(
+                "Cannot standardize headers of an empty DataFrame.")
+
+        headers = list(input_df.columns)
+
+        # Step 1: parse header list
+        cleaned_headers, detected_units = self.parse_header_list(headers)
+        # Step 2: rename columns in dataframe
+        rename_map = {old: new for old, new in zip(headers, cleaned_headers)}
+
+        input_df.rename(columns=rename_map, inplace=True)
+
+        # Step 3: update class metadata
+        self.header_units = detected_units
+        self.header = cleaned_headers
+        self.metadata["units"] = detected_units
+
+        # Step 4: alias mapping (using ALIAS_MAP)
+        for key, patterns in ALIAS_MAP.items():
+            setattr(self, f"has_{key}", False)
+
+        for h in cleaned_headers:
+            for std_name, patterns in ALIAS_MAP.items():
+                if any(re.search(p, h) for p in patterns):
+                    setattr(self, f"has_{std_name}", True)
+
+        return rename_map
+
+    '''
+    Metadata processing
+    '''
+
+    def _update_metadata(self):
+        axis = self.metadata.get("wavelength_axis")
+        if axis is None:
+            if self.df.empty:
+                return
+            axis = self.df.index
+        axis = pd.Index(axis.astype(float), name="wavelength")
+        self.metadata["wavelength_axis"] = axis
+        self.metadata["spectral_bounds"] = (
+            float(axis.min()), float(axis.max()))
+        self.metadata["spectral_unit"] = self.detect_wavelength_unit(
+            axis)
+
+    '''
+    Utilities:
+    '''
 
     def normalize_wavelengths(
             self,
@@ -409,37 +521,3 @@ class TelescopeModel:
         # Convert everything through meters
         values_in_m = values * UNIT_TO_METERS[from_unit]
         return values_in_m / UNIT_TO_METERS[to_unit]
-
-    def standardize_header(
-            self
-    ):
-        """
-        Standardizes dataframe headers for optical data and sets capability flags.
-        """
-        if self.df.empty:
-            raise ValueError(
-                "DataFrame is empty. Load data before standardizing headers.")
-
-        rename_map = {}
-        lowered = [col.lower().strip() for col in self.df.columns]
-
-        # Initialize detection flags
-        for key in ALIAS_MAP.keys():
-            setattr(self, f"has_{key}", False)
-
-        # Try to match each column
-        for original, col_lower in zip(self.df.columns, lowered):
-            for std_name, patterns in ALIAS_MAP.items():
-                if any(re.search(p, col_lower) for p in patterns):
-                    rename_map[original] = std_name
-                    setattr(self, f"has_{std_name}", True)
-                    break  # stop after first match to avoid overwriting
-
-        # Apply renaming safely
-        if rename_map:
-            self.df.rename(columns=rename_map, inplace=True)
-            self.header = list(self.df.columns)
-        else:
-            print("Warning: No known optical headers detected.")
-
-        return rename_map
