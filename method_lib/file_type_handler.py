@@ -5,9 +5,7 @@ import re
 import warnings
 import pickle
 from definitions import *
-from method_lib.sourceTemplateFuncs import *
-from scipy.interpolate import interp1d
-from method_lib.FileTypeHandler import *
+from method_lib.source_templates import *
 
 
 def load_excel_autoheader(path, max_scan_rows=10, min_nonempty_per_col=2):

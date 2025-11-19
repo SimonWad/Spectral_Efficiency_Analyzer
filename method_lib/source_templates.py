@@ -1,4 +1,5 @@
 import numpy as np
+from utils.unit_conversions import *
 
 
 def nplanck_micron(lambda_micron, temp, SI=False, NPHOTONS=False):
@@ -35,6 +36,9 @@ def nplanck_micron(lambda_micron, temp, SI=False, NPHOTONS=False):
     """
 
     lam = np.atleast_1d(lambda_micron).astype(np.float64)
+    lam_unit = detect_wavelength_unit(lam)
+    if lam_unit is not "um":
+        lam = convert_unit(lam, from_unit=lam_unit, to_unit="um")
 
     # Constants (in cgs units, same as before)
     c1 = 3.741773e-5      # 2hc^2  [erg*cm^2/s]

@@ -1,5 +1,5 @@
 import unittest
-from method_lib.dataImporter import TelescopeModel
+from method_lib.data_importer import TelescopeModel
 
 
 class Test_TestDetectUnitsInHeader(unittest.TestCase):
