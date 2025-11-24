@@ -7,10 +7,13 @@ from method_lib.source_templates import nplanck_micron
 class SourceModel:
     def __init__(
         self,
+        wavelength_unit: str = "um",
         sourceID: str = "default"
     ):
         self.sourceID = sourceID
         self.df = pd.DataFrame()
+        self.wavelength_unit = wavelength_unit
+        self.unit = wavelength_unit
 
     def generateSourceData_BB(
             self,
@@ -20,19 +23,26 @@ class SourceModel:
             showNPHOTONS=False,
             spectrum_unit: str = None
     ):
-
         if spectrum_unit is None:
-            source_unit = detect_wavelength_unit(sourceSpectrum)
-            if source_unit != "um":
-                sourceSpectrum = convert_unit(
-                    sourceSpectrum, from_unit=source_unit, to_unit="um")
-                self.unit = "um"
+            detected_unit = detect_wavelength_unit(sourceSpectrum)
         else:
-            sourceSpectrum = convert_unit(
-                sourceSpectrum, from_unit=source_unit, to_unit=spectrum_unit)
-            self.unit = source_unit
+            detected_unit = spectrum_unit
 
-        self.df['wavelength'] = sourceSpectrum
-        self.df.set_index("wavelength", inplace=True)
-        self.df[self.sourceID], _ = nplanck_micron(
-            sourceSpectrum, sourceTemperature, SI=unitsSI, NPHOTONS=showNPHOTONS)
+        if detected_unit != self.wavelength_unit:
+            sourceSpectrum_converted = convert_unit(
+                sourceSpectrum,
+                from_unit=detected_unit,
+                to_unit=self.wavelength_unit
+            )
+        else:
+            sourceSpectrum_converted = sourceSpectrum
+
+        sourceSpectrum_converted.astype(float).round(9)
+        self.df = pd.DataFrame(index=sourceSpectrum_converted)
+        bb_values, _ = nplanck_micron(
+            sourceSpectrum_converted,
+            sourceTemperature,
+            SI=unitsSI,
+            NPHOTONS=showNPHOTONS
+        )
+        self.df[self.sourceID] = bb_values

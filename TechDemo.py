@@ -4,37 +4,55 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import utils.unit_conversions as uc
+from utils.index_diagnostics import *
+from utils.spectrum_axis import *
 
-lambda_ = np.arange(0.201, 13, 0.001)
+lambda_ = make_spectrum_axis(0.200, 13, 0.001, 9)
 
 
-STEP_ = TelescopeModel("Simple_telescope")
-STEP_.add_component("test_data/FB1750-500.xlsx", "FB17")
+STEP_ = TelescopeModel("um", "Simple_telescope")
+# STEP_.add_component("test_data/FGL280.xls", "FGL280")
+STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "ZnSe_Window")
+# STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "TWO_ZnSe")
+STEP_.add_component("test_data/FGL280.xls", "FGL280")
+# print(STEP_.metadata)
 
 uc.convert_percentage(STEP_.df, "transmission")
 STEP_.generate_throughput("transmission")
 
-print(STEP_.df.head())
+print(STEP_.df)
 
-plt.plot(STEP_.df.index, STEP_.df["transmission_FB17"])
+plt.plot(STEP_.df.index, STEP_.df["transmission_FGL280"])
+plt.plot(STEP_.df.index, STEP_.df["transmission_ZnSe_Window"])
 plt.plot(STEP_.df.index, STEP_.df["transmission_throughput"])
-plt.show()
+# plt.show()
 
 result = STEP_.map_spectrum(lambda_, "transmission_throughput")
 
-sourceBB = SourceModel("Black Body")
+sourceBB = SourceModel("um", "Black Body")
 sourceBB.generateSourceData_BB(lambda_, 5000, unitsSI=True)
+sourceBB.df.index.astype(float).round(9)
+print(sourceBB.df)
 
-result[sourceBB.sourceID] = sourceBB.df[sourceBB.sourceID]
+sourceBB.df.index = sourceBB.df.index.astype(float)
 
-# print(STEP_.metadata)
-fig, ax = plt.subplots()
+index_diagnostic(result.index, sourceBB.df.index)
 
-res = result.prod(axis=1)
+source_col = sourceBB.df[sourceBB.sourceID].reindex(result.index)
 
-ax.plot(result.index, result[sourceBB.sourceID], '--k')
-ax.plot(result.index, res, 'k')
-print(res)
-ax.set_ylabel('transmission')
-ax.set_xlabel('Wavelength [µm]')
-plt.show()
+result[sourceBB.sourceID] = source_col
+
+print(result)
+
+# # print(STEP_.metadata)
+# fig, ax = plt.subplots()
+
+# res = result.prod(axis=1)
+
+# ax.plot(result.index, result[sourceBB.sourceID], '--k')
+# ax.plot(result.index, res, 'k')
+# print(result)
+# print(res)
+# ax.set_ylabel('transmission')
+# ax.set_xlabel('Wavelength [µm]')
+# plt.show()

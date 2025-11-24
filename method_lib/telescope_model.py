@@ -13,18 +13,20 @@ from utils.unit_conversions import *
 class TelescopeModel:
     def __init__(
             self,
+            wavelength_unit: str,
             ID: str = "default_telescope"
     ):
         self.ID = ID
         self.df = pd.DataFrame()
         self.__temp_df = pd.DataFrame()
+        self.wavelength_unit = wavelength_unit
         self.metadata = {
             "Telescope ID": self.ID,
             "components": [],
             "units": {},  # standardized column -> unit (e.g. '%' or 'nm')
             "wavelength_axis": None,
             "spectral_bounds": None,
-            "spectral_unit": None,
+            "spectral_unit": wavelength_unit,
         }
 
     '''
@@ -42,6 +44,10 @@ class TelescopeModel:
         self.__temp_df = self._load_component(filePath)
         self.standardize_header(self.__temp_df)
         self.__temp_df.set_index("wavelength", inplace=True)
+        self.__temp_df.sort_index(inplace=True)
+        self.__temp_df.index = normalize_index_to_standard(
+            self.__temp_df.index, self.wavelength_unit)
+        self.__temp_df.index = self.__temp_df.index.astype(float).round(9)
 
         if suffix is None:
             generated_suffix = "_" + componentID
@@ -55,11 +61,20 @@ class TelescopeModel:
         if self.df.empty:
             self.df = self.__temp_df.copy()
             self._update_metadata()
-
         else:
+            norm_axis = normalize_spectrum_axis(
+                self.__temp_df.index, self.df.index)
+            self.__temp_df.index = norm_axis
+
+            self.df.index = self.df.index.astype(float).round(9)
+            self.__temp_df.index = self.__temp_df.index.astype(float).round(9)
+
             self.__temp_df = self.__temp_df.reindex(
                 self.metadata["wavelength_axis"]).interpolate()
-            self.df = pd.concat([self.df, self.__temp_df], axis=1)
+            print(self.__temp_df)
+            self.df.index = self.df.index.astype(float).round(9)
+            self.df = pd.concat([self.df, self.__temp_df],
+                                axis=1)
             self._update_metadata()
 
     def generate_throughput(
@@ -76,6 +91,13 @@ class TelescopeModel:
             througput_col: str,
             method: str = "linear"
     ) -> pd.DataFrame:
+
+        lambda_ = np.asarray(lambda_, dtype=float)
+        lambda_ = np.round(lambda_, 9)  # adjust precision as needed
+        # Clamp values to interpolation range
+        min_x = float(self.df.index.min())
+        max_x = float(self.df.index.max())
+        lambda_ = np.clip(lambda_, min_x, max_x)
         telescope_axis_unit = detect_wavelength_unit(self.df.index)
         input_axis_unit = detect_wavelength_unit(lambda_)
         conv_lambda_ = convert_unit(lambda_, from_unit=input_axis_unit,
@@ -101,7 +123,7 @@ class TelescopeModel:
         return df.copy()
 
     '''
-    Methods for header processing 
+    Methods for header processing
     '''
 
     def _detect_unit_in_header(self, header: str):

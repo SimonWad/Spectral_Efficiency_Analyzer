@@ -53,7 +53,7 @@ def load_excel_autoheader(path, max_scan_rows=10, min_nonempty_per_col=2):
 
 
 def detectCompatible(fileName):
-    supportedFileTypes = [".csv", ".xlsx", ".txt", ".json"]
+    supportedFileTypes = [".csv", ".xlsx", ".xls", ".txt", ".json"]
     _, ext = os.path.splitext(fileName)
     ext = ext.lower()
 

@@ -15,7 +15,7 @@ def read_data_file(
     match fileType:
         case ".csv":
             df = pd.read_csv(fileName)
-        case ".xlsx":
+        case ".xlsx" | ".xls":
             df = load_excel_autoheader(fileName)
         case ".txt":
             if txtDelim is None:

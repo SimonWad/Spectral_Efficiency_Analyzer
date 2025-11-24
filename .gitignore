@@ -8,3 +8,4 @@ TODO.md
 *.csv
 tempCodeRunnerFile.py
 .vscode
+method_lib/optical_component.py

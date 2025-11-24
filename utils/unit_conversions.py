@@ -62,3 +62,56 @@ def convert_percentage(
     contains_target = df.columns.str.contains(percentage_flag)
     fetched_cols = df.loc[:, contains_target].columns.values
     df[fetched_cols] = df[fetched_cols] / 100
+
+
+def normalize_spectrum_axis(source_index, target_index):
+    """
+    Normalize the wavelength axis of a source spectrum to match a target spectrum.
+
+    Parameters
+    ----------
+    source_index : array-like / pandas.Index
+        The wavelength index that needs to be converted and aligned.
+    target_index : array-like / pandas.Index
+        The wavelength axis to align to.
+
+    Returns
+    -------
+    pd.Index
+        A wavelength axis converted to target units.
+
+    Notes
+    -----
+    - Detects units of both axes.
+    - Converts source axis to target axis units.
+    - Returns only the converted values (does NOT reindex a DataFrame).
+    """
+
+    # Convert to numpy for processing
+    source = pd.Index(source_index).astype(float)
+    target = pd.Index(target_index).astype(float)
+
+    # Detect units
+    source_unit = detect_wavelength_unit(source)
+    target_unit = detect_wavelength_unit(target)
+
+    # Convert wavelength units if necessary
+    if source_unit != target_unit:
+        source = pd.Index(
+            convert_unit(source.values, from_unit=source_unit,
+                         to_unit=target_unit)
+        )
+
+    return source
+
+
+def normalize_index_to_standard(index, standard_unit):
+    idx = pd.Index(index).astype(float)
+    detected = detect_wavelength_unit(idx)
+
+    if detected != standard_unit:
+        idx = pd.Index(
+            convert_unit(idx.values, from_unit=detected, to_unit=standard_unit)
+        )
+
+    return idx
