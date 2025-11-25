@@ -1,11 +1,15 @@
 from method_lib.telescope_model import TelescopeModel
 from method_lib.source_model import SourceModel
+from method_lib.read_write_data_models import *
+
 import pandas as pd
 import numpy as np
+
 import matplotlib.pyplot as plt
 import utils.unit_conversions as uc
 from utils.index_diagnostics import *
 from utils.spectrum_axis import *
+
 
 lambda_ = make_spectrum_axis(0.200, 13, 0.001, 9)
 
@@ -15,7 +19,7 @@ STEP_ = TelescopeModel("um", "Simple_telescope")
 STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "ZnSe_Window")
 # STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "TWO_ZnSe")
 STEP_.add_component("test_data/FGL280.xls", "FGL280")
-# print(STEP_.metadata)
+print(STEP_.metadata)
 
 uc.convert_percentage(STEP_.df, "transmission")
 STEP_.generate_throughput("transmission")
@@ -43,6 +47,9 @@ source_col = sourceBB.df[sourceBB.sourceID].reindex(result.index)
 result[sourceBB.sourceID] = source_col
 
 print(result)
+
+save_telescope_model(STEP_, "test_model_data.json")
+
 
 # # print(STEP_.metadata)
 # fig, ax = plt.subplots()

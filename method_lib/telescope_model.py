@@ -199,13 +199,10 @@ class TelescopeModel:
     '''
 
     def _update_metadata(self):
-        axis = self.metadata.get("wavelength_axis")
-        if axis is None:
-            if self.df.empty:
-                return
-            axis = self.df.index
+        if self.df.empty:
+            return
+        axis = self.df.index
         axis = pd.Index(axis.astype(float), name="wavelength")
-        self.metadata["wavelength_axis"] = axis
         self.metadata["spectral_bounds"] = (
             float(axis.min()), float(axis.max()))
         self.metadata["spectral_unit"] = detect_wavelength_unit(
