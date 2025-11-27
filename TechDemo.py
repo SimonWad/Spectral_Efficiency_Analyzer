@@ -1,6 +1,7 @@
 from method_lib.telescope_model import TelescopeModel
 from method_lib.source_model import SourceModel
 from method_lib.read_write_data_models import *
+from method_lib.data_plotting import *
 
 import pandas as pd
 import numpy as np
@@ -16,9 +17,10 @@ lambda_ = make_spectrum_axis(0.200, 13, 0.001, 9)
 
 STEP_ = TelescopeModel("um", "Simple_telescope")
 # STEP_.add_component("test_data/FGL280.xls", "FGL280")
-STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "ZnSe_Window")
-# STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "TWO_ZnSe")
-STEP_.add_component("test_data/FGL280.xls", "FGL280")
+# STEP_.add_component("test_data/ZnSe_Window_Data.xlsx", "ZnSe_Window")
+STEP_.add_component("test_data/Test_filter.xlsx", "test")
+STEP_.add_component("test_data/Test_filter_2.xlsx", "test_2")
+# STEP_.add_component("test_data/FGL280.xls", "FGL280")
 print(STEP_.metadata)
 
 uc.convert_percentage(STEP_.df, "transmission")
@@ -26,10 +28,14 @@ STEP_.generate_throughput("transmission")
 
 print(STEP_.df)
 
-plt.plot(STEP_.df.index, STEP_.df["transmission_FGL280"])
-plt.plot(STEP_.df.index, STEP_.df["transmission_ZnSe_Window"])
-plt.plot(STEP_.df.index, STEP_.df["transmission_throughput"])
+plot_telescope_data(STEP_)
+
+# # plt.plot(STEP_.df.index, STEP_.df["transmission_FGL280"])
+# plt.plot(STEP_.df.index, STEP_.df["transmission_test"])
+# plt.plot(STEP_.df.index, STEP_.df["transmission_throughput"])
+# plt.ylim((0, 1))
 # plt.show()
+
 
 result = STEP_.map_spectrum(lambda_, "transmission_throughput")
 
@@ -52,14 +58,14 @@ save_telescope_model(STEP_, "test_model_data.json")
 
 
 # # print(STEP_.metadata)
-# fig, ax = plt.subplots()
+fig, ax = plt.subplots()
 
-# res = result.prod(axis=1)
+res = result.prod(axis=1)
 
-# ax.plot(result.index, result[sourceBB.sourceID], '--k')
-# ax.plot(result.index, res, 'k')
-# print(result)
-# print(res)
-# ax.set_ylabel('transmission')
-# ax.set_xlabel('Wavelength [µm]')
-# plt.show()
+print("Integral of resulting spectrum: \n", np.trapz(res, res.index))
+
+ax.plot(result.index, result[sourceBB.sourceID], '--k')
+ax.plot(result.index, res, 'k')
+ax.set_ylabel('W/m²/µm')
+ax.set_xlabel('Wavelength [µm]')
+plt.show()
